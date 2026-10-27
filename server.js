@@ -252,6 +252,68 @@ app.get('/api/admin/stats', authenticateToken, requireAdmin, async (req, res) =>
     res.status(500).json({ error: 'Lỗi tính toán thống kê: ' + err.message });
   }
 });
+// ==========================================
+// API MÃ LỚP HỌC (CLASS CODE)
+// ==========================================
+
+// 1. Admin / Giáo viên tạo mã lớp học mới
+app.post('/api/admin/classes', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, code } = req.body;
+    if (!name || !code) return res.status(400).json({ error: 'Vui lòng nhập Tên lớp và Mã lớp' });
+
+    const formattedCode = code.trim().toUpperCase();
+
+    const { data, error } = await supabase
+      .from('classes')
+      .insert([{ name, code: formattedCode }])
+      .select();
+
+    if (error) {
+      if (error.code === '23505') return res.status(400).json({ error: 'Mã lớp học này đã tồn tại!' });
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ message: `Tạo lớp thành công! Mã lớp: ${formattedCode}` });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi server: ' + err.message });
+  }
+});
+
+// 2. Học viên nhập mã tham gia lớp học
+app.post('/api/student/join-class', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'Vui lòng nhập Mã lớp học' });
+
+    const formattedCode = code.trim().toUpperCase();
+
+    // Tìm xem lớp học có tồn tại không
+    const { data: classData, error: classError } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('code', formattedCode)
+      .single();
+
+    if (classError || !classData) {
+      return res.status(404).json({ error: 'Mã lớp học không hợp lệ hoặc không tồn tại!' });
+    }
+
+    // Thêm học viên vào lớp
+    const { error: joinError } = await supabase
+      .from('class_members')
+      .insert([{ class_id: classData.id, user_id: req.user.id }]);
+
+    if (joinError) {
+      if (joinError.code === '23505') return res.status(400).json({ error: 'Bạn đã tham gia lớp học này rồi!' });
+      return res.status(500).json({ error: joinError.message });
+    }
+
+    res.json({ message: `🎉 Bạn đã tham gia thành công lớp: ${classData.name}` });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi server: ' + err.message });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
